@@ -35,13 +35,26 @@ function collector.Collect(filepath)
   return index_table, name_table
  end
 
- local function setup_table(name_table)
-  local ret_tbl = "return { "
+ local function setup_table(name_table, content)
+  local function test_is_there(content, table)
+   if string.match(content,table) then
+    return "y"
+   else
+    return "n"
+   end
+  end
+
+  local ret_tbl = "\nreturn { "
+  
+  local middle = ""
+  local matches = "n"
   for ind,val in pairs(name_table) do
    local entry = val .. " = " .. val..", "
-   ret_tbl = ret_tbl .. entry
+   middle = middle .. entry
+   matches = test_is_there(content, middle)
   end
-  ret_tbl = ret_tbl .. " }"
+  if matches == "y" then return " " end
+  ret_tbl = ret_tbl .. middle ..  " }"
   return ret_tbl
  end
 
@@ -52,9 +65,12 @@ function collector.Collect(filepath)
   return source
  end
 
- local function write_file_contents(filepath, contents)
-  local fh = assert(io.open(filepath, 'a'))
-  fh:write(contents)
+ local function write_file_contents(filepath, contents, table ,eofFile )
+  if table == " " then return end -- no need to update or write since its already there.
+  local str = string.sub(contents, 0, eofFile)
+  str = str .. table
+  local fh = assert(io.open(filepath, 'wb'))
+  fh:write(str)
   fh:close()
  end
 
@@ -62,8 +78,19 @@ function collector.Collect(filepath)
   local content = get_file_contents(filepath)
   local i,n = find_funcs_index_and_names(content)
   i,n = remove_local_funcs(content, i, n)
-  local rt = setup_table(n)
-  write_file_contents(filepath, rt)
+  local rt = setup_table(n, content)
+  -- get the last end
+  local t = {} -- table to store the indices
+  local i = 0
+  while true do
+    i = string.find(content, "end", i+1) -- find where " function namehere(" is at.
+    if i == nil then break end
+    table.insert(t, i)
+  end
+  -- now that we have the last end we want to get the index right after it :)
+  local last = #t
+
+  write_file_contents(filepath, content, rt, t[last] + 3)
  end
 
  read_collect_and_write(filepath)
