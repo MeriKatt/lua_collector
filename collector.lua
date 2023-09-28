@@ -1,38 +1,48 @@
 local collector = collector or {}
 
 function collector.Collect(filepath)
- local function find_funcs_index_and_names(str)
-  local t = {}                   -- table to store the indices
-  local n= {}  --table to store the names.
-  local i = 0
-  while true do
-    i, j = string.find(str, "function", i+1) -- find where " function namehere(" is at.
-    if i == nil or j == nil then break end
-    local e,l = string.find(str, "[(]", j+2)
-    
-    local quote = string.sub(str, j+ 1, e - 1)
-    
-    print(quote)
-    table.insert(t, i)
-    local ind = 0
-    for _,v in ipairs(t) do
-     if v == i then
-      ind = _
-     end
+ local function find_globals(str)
+  local words = {}
+  local cur_depth = 0
+  local function split_string(String)
+    local seperater = "%s"
+    local t = {}
+    local i = 0
+    for str in string.gmatch(String, "([^"..seperater.."]+)") do
+      t[i] = str
+      i = i + 1
     end
-    n[ind] = quote
+    return t
   end
-  return t, n
- end
+  local function get_next(str, i)
+    return str[i + 1]
+  end
+  local all_words = split_string(str)
+  local prev_is_local = false
+  for i,w in ipairs(all_words) do -- Get global functions and variables.
+      prev_is_local = (all_words[i - 1] == "local")
+      if not prev_is_local then
+        if (w == "function") and (cur_depth == 0) then
+          table.insert(words, get_next(all_words, i))
+          cur_depth = cur_depth + 1
+        end
+        if w == "end" then
+          cur_depth = cur_depth - 1
+        end
+        if (get_next(all_words, i) == "=") and (cur_depth == 0) then
+          table.insert(words, w)
+        end
+        if w == "return" and cur_depth == 0 then
+          break
+        end
+      else
+        if (w == "function") then
+          cur_depth = cur_depth + 1
+        end
+      end
 
- local function remove_local_funcs(str, index_table, name_table)
-  for ind, val in pairs(index_table) do
-   if string.sub(str, val - 6, val -1 ) == "local " then
-    table.remove(index_table, ind)
-    table.remove(name_table, ind)
-   end
   end
-  return index_table, name_table
+  return words
  end
 
  local function setup_table(name_table, content)
@@ -48,10 +58,12 @@ function collector.Collect(filepath)
   
   local middle = ""
   local matches = "n"
-  for ind,val in pairs(name_table) do
-   local entry = val .. " = " .. val..", "
+  for ind,val in ipairs(name_table) do
+    print(#name_table)
+   local entry = val.. " = " .. val..", "
    middle = middle .. entry
    matches = test_is_there(content, middle)
+   print(matches)
   end
   if matches == "y" then return " " end
   ret_tbl = ret_tbl .. middle ..  " }"
@@ -75,21 +87,21 @@ function collector.Collect(filepath)
  end
 
  local function read_collect_and_write(filepath)
+  --print(filepath)
   local content = get_file_contents(filepath)
-  local i,n = find_funcs_index_and_names(content)
-  i,n = remove_local_funcs(content, i, n)
+  local n = find_globals(content)
   local rt = setup_table(n, content)
   -- get the last end
   local t = {} -- table to store the indices
   local i = 0
   while true do
-    i = string.find(content, "end", i+1) -- find where " function namehere(" is at.
+    i = string.find(content, "end", i+1) 
     if i == nil then break end
     table.insert(t, i)
   end
   -- now that we have the last end we want to get the index right after it :)
   local last = #t
-
+  if t[last] == nil then return end
   write_file_contents(filepath, content, rt, t[last] + 3)
  end
 
